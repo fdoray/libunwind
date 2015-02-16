@@ -33,6 +33,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include <stdlib.h>
 #include <libunwind.h>
+#include <pthread.h>
 
 #include "elf64.h"
 #include "mempool.h"
@@ -70,9 +71,12 @@ struct unw_addr_space
 #endif
     unw_word_t dyn_generation;          /* see dyn-common.h */
     unw_word_t dyn_info_list_addr;      /* (cached) dyn_info_list_addr */
-    struct dwarf_rs_cache global_cache;
+    pthread_key_t cache_key;
+    struct dwarf_rs_cache* cache_pool;
     struct unw_debug_frame_list *debug_frames;
    };
+
+#define UNW_CACHE_POOL_SIZE 50
 
 struct cursor
   {

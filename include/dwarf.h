@@ -37,13 +37,6 @@ struct elf_dyn_info;
 # include "config.h"
 #endif
 
-#ifdef HAVE___THREAD
-  /* For now, turn off per-thread caching.  It uses up too much TLS
-     memory per thread even when the thread never uses libunwind at
-     all.  */
-# undef HAVE___THREAD
-#endif
-
 #ifndef UNW_REMOTE_ONLY
   #if defined(HAVE_LINK_H)
     #include <link.h>
@@ -335,6 +328,7 @@ typedef unsigned char unw_hash_index_t;
 
 struct dwarf_rs_cache
   {
+    int used;                   /* indicates whether this cache is used by a thread */
     pthread_mutex_t lock;
     unsigned short lru_head;    /* index of lead-recently used rs */
     unsigned short lru_tail;    /* index of most-recently used rs */
@@ -346,7 +340,7 @@ struct dwarf_rs_cache
 
     /* rs cache: */
     dwarf_reg_state_t buckets[DWARF_UNW_CACHE_SIZE];
-  };
+  } __attribute__((aligned(64)));
 
 /* A list of descriptors for loaded .debug_frame sections.  */
 

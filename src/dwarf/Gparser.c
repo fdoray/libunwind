@@ -23,6 +23,7 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
+#include <pthread.h>
 #include <stddef.h>
 #include "dwarf_i.h"
 #include "libunwind_i.h"
@@ -531,19 +532,50 @@ flush_rs_cache (struct dwarf_rs_cache *cache)
 static inline struct dwarf_rs_cache *
 get_rs_cache (unw_addr_space_t as, intrmask_t *saved_maskp)
 {
-  struct dwarf_rs_cache *cache = &as->global_cache;
-  unw_caching_policy_t caching = as->caching_policy;
+  pthread_key_t cache_key = as->cache_key;
+  struct dwarf_rs_cache* cache_pool = as->cache_pool;
+  struct dwarf_rs_cache *cache = NULL;
 
-  if (caching == UNW_CACHE_NONE)
-    return NULL;
+  if (likely(pthread_getspecific != NULL))
+  {
+    cache = (struct dwarf_rs_cache *)pthread_getspecific(cache_key);
 
+    if (unlikely(cache == NULL))
+    {
+      /* No cache for this thread yet. */
+      int i = 1;
+      for (; i < UNW_CACHE_POOL_SIZE; ++i) {
+        if (__sync_bool_compare_and_swap(&cache_pool[i].used, 0, 1)) {
+          cache = &cache_pool[i];
+          break;
+        }
+      }
+      if (unlikely(cache == NULL)) {
+        cache = &cache_pool[0];
+      }
+
+      pthread_setspecific(cache_key, cache);
+    }
+
+    if (unlikely (cache == &cache_pool[0]))
+      {
+        Debug (16, "acquiring lock\n");
+        lock_acquire (&cache->lock, *saved_maskp);
+      }
+  }
+  else
+  {
+    cache = &cache_pool[0];
+  }
+
+  /*
   if (likely (caching == UNW_CACHE_GLOBAL))
     {
       Debug (16, "acquiring lock\n");
       lock_acquire (&cache->lock, *saved_maskp);
     }
-
-  if (atomic_read (&as->cache_generation) != atomic_read (&cache->generation))
+  */
+  if (unlikely(atomic_read (&as->cache_generation) != atomic_read (&cache->generation)))
     {
       flush_rs_cache (cache);
       cache->generation = as->cache_generation;
@@ -556,11 +588,21 @@ static inline void
 put_rs_cache (unw_addr_space_t as, struct dwarf_rs_cache *cache,
                   intrmask_t *saved_maskp)
 {
+  struct dwarf_rs_cache* cache_pool = as->cache_pool;
+
   assert (as->caching_policy != UNW_CACHE_NONE);
 
+  if (unlikely(cache == &cache_pool[0]))
+  {
+      Debug (16, "unmasking signals/interrupts and releasing lock\n");
+      lock_release (&cache->lock, *saved_maskp);
+  }
+
+  /*
   Debug (16, "unmasking signals/interrupts and releasing lock\n");
   if (likely (as->caching_policy == UNW_CACHE_GLOBAL))
     lock_release (&cache->lock, *saved_maskp);
+  */
 }
 
 static inline unw_hash_index_t CONST_ATTR

@@ -37,13 +37,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include "compiler.h"
 
-#ifdef HAVE___THREAD
-  /* For now, turn off per-thread caching.  It uses up too much TLS
-     memory per thread even when the thread never uses libunwind at
-     all.  */
-# undef HAVE___THREAD
-#endif
-
 /* Platform-independent libunwind-internal declarations.  */
 
 #include <sys/types.h>  /* HP-UX needs this before include of pthread.h */
@@ -107,6 +100,10 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #pragma weak pthread_mutex_init
 #pragma weak pthread_mutex_lock
 #pragma weak pthread_mutex_unlock
+
+#pragma weak pthread_key_create
+#pragma weak pthread_getspecific
+#pragma weak pthread_setspecific
 
 #define mutex_init(l)                                                   \
         (pthread_mutex_init != NULL ? pthread_mutex_init ((l), NULL) : 0)

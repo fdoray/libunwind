@@ -30,6 +30,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <config.h>
 #endif
 
+#include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -248,6 +250,15 @@ get_static_proc_name (unw_addr_space_t as, unw_word_t ip,
 }
 
 HIDDEN void
+x86_64_release_cache (void* ptr)
+{
+    struct dwarf_rs_cache* cache = (struct dwarf_rs_cache*)ptr;
+
+    cache->generation = 0;
+    cache->used = 0;
+}
+
+HIDDEN void
 x86_64_local_addr_space_init (void)
 {
   memset (&local_addr_space, 0, sizeof (local_addr_space));
@@ -261,6 +272,28 @@ x86_64_local_addr_space_init (void)
   local_addr_space.acc.resume = x86_64_local_resume;
   local_addr_space.acc.get_proc_name = get_static_proc_name;
   unw_flush_cache (&local_addr_space, 0, 0);
+
+  /* Initialize cache pool. */
+  if (pthread_key_create != NULL)
+  {
+      if (pthread_key_create(&local_addr_space.cache_key,
+                             &x86_64_release_cache) != 0)
+      {
+          printf("Unable to create pthread_key.\n");
+          exit(1);
+      }
+
+      local_addr_space.cache_pool = calloc(
+              UNW_CACHE_POOL_SIZE, sizeof(struct dwarf_rs_cache));
+
+      /* Initialize mutex for the shared cache. */
+      lock_init(&local_addr_space.cache_pool[0].lock);
+  }
+  else
+  {
+      local_addr_space.cache_pool = calloc(
+              1, sizeof(struct dwarf_rs_cache));
+  }
 
   memset (last_good_addr, 0, sizeof (unw_word_t) * NLGA);
   lga_victim = 0;
