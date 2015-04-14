@@ -277,56 +277,8 @@ trace_lookup (unw_cursor_t *cursor,
               unw_word_t rbp,
               unw_word_t rsp)
 {
-  /* First look up for previously cached information using cache as
-     linear probing hash table with probe step of 1.  Majority of
-     lookups should be completed within few steps, but it is very
-     important the hash table does not fill up, or performance falls
-     off the cliff. */
-  uint64_t i, addr;
-  uint64_t cache_size = 1u << cache->log_size;
-  uint64_t slot = ((rip * 0x9e3779b97f4a7c16) >> 43) & (cache_size-1);
   unw_tdep_frame_t *frame;
-
-  for (i = 0; i < 16; ++i)
-  {
-    frame = &cache->frames[slot];
-    addr = frame->virtual_address;
-
-    /* Return if we found the address. */
-    if (likely(addr == rip))
-    {
-      Debug (4, "found address after %ld steps\n", i);
-      return frame;
-    }
-
-    /* If slot is empty, reuse it. */
-    if (likely(! addr))
-      break;
-
-    /* Linear probe to next slot candidate, step = 1. */
-    if (++slot >= cache_size)
-      slot -= cache_size;
-  }
-
-  /* If we collided after 16 steps, or if the hash is more than half
-     full, force the hash to expand. Fill the selected slot, whether
-     it's free or collides. Note that hash expansion drops previous
-     contents; further lookups will refill the hash. */
-  Debug (4, "updating slot %lu after %ld steps, replacing 0x%lx\n", slot, i, addr);
-  if (unlikely(addr || cache->used >= cache_size / 2))
-  {
-    if (unlikely(trace_cache_expand (cache) < 0))
-      return NULL;
-
-    cache_size = 1u << cache->log_size;
-    slot = ((rip * 0x9e3779b97f4a7c16) >> 43) & (cache_size-1);
-    frame = &cache->frames[slot];
-    addr = frame->virtual_address;
-  }
-
-  if (! addr)
-    ++cache->used;
-
+  frame = &cache->frames[0];
   return trace_init_addr (frame, cursor, cfa, rip, rbp, rsp);
 }
 
