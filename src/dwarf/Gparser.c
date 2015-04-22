@@ -722,6 +722,45 @@ eval_location_expr (struct dwarf_cursor *c, unw_addr_space_t as,
 }
 
 static int
+apply_single_reg_state (
+    int reg, unw_word_t cfa, unw_accessors_t *a, unw_addr_space_t as,
+    struct dwarf_cursor *c, struct dwarf_reg_state *rs)
+{
+  int ret;
+
+  switch ((dwarf_where_t) rs->reg[reg].where)
+    {
+    case DWARF_WHERE_UNDEF:
+      c->loc[reg] = DWARF_NULL_LOC;
+      break;
+
+    case DWARF_WHERE_SAME:
+      break;
+
+    case DWARF_WHERE_CFAREL:
+      c->loc[reg] = DWARF_MEM_LOC (c, cfa + rs->reg[reg].val);
+      break;
+
+    case DWARF_WHERE_REG:
+      c->loc[reg] = DWARF_REG_LOC (c, dwarf_to_unw_regnum (rs->reg[reg].val));
+      break;
+
+    case DWARF_WHERE_EXPR:
+      if ((ret = eval_location_expr (c, as, a, rs->reg[reg].val, c->loc + reg, c->as_arg)) < 0)
+        return ret;
+      break;
+
+    case DWARF_WHERE_VAL_EXPR:
+      if ((ret = eval_location_expr (c, as, a, rs->reg[reg].val, c->loc + reg, c->as_arg)) < 0)
+        return ret;
+      c->loc[reg] = DWARF_VAL_LOC (c, DWARF_GET_LOC (c->loc[reg]));
+      break;
+    }
+
+    return 0;
+}
+
+static int
 apply_reg_state (struct dwarf_cursor *c, struct dwarf_reg_state *rs)
 {
   unw_word_t regnum, addr, cfa, ip;
@@ -776,39 +815,8 @@ apply_reg_state (struct dwarf_cursor *c, struct dwarf_reg_state *rs)
       cfa = DWARF_GET_LOC (cfa_loc);
     }
 
-  for (i = 0; i < DWARF_NUM_PRESERVED_REGS; ++i)
-    {
-      switch ((dwarf_where_t) rs->reg[i].where)
-        {
-        case DWARF_WHERE_UNDEF:
-          c->loc[i] = DWARF_NULL_LOC;
-          break;
-
-        case DWARF_WHERE_SAME:
-          break;
-
-        case DWARF_WHERE_CFAREL:
-          c->loc[i] = DWARF_MEM_LOC (c, cfa + rs->reg[i].val);
-          break;
-
-        case DWARF_WHERE_REG:
-          c->loc[i] = DWARF_REG_LOC (c, dwarf_to_unw_regnum (rs->reg[i].val));
-          break;
-
-        case DWARF_WHERE_EXPR:
-          addr = rs->reg[i].val;
-          if ((ret = eval_location_expr (c, as, a, addr, c->loc + i, arg)) < 0)
-            return ret;
-          break;
-
-        case DWARF_WHERE_VAL_EXPR:
-          addr = rs->reg[i].val;
-          if ((ret = eval_location_expr (c, as, a, addr, c->loc + i, arg)) < 0)
-            return ret;
-          c->loc[i] = DWARF_VAL_LOC (c, DWARF_GET_LOC (c->loc[i]));
-          break;
-        }
-    }
+  if ((ret = apply_single_reg_state(c->ret_addr_column, cfa, a, as, c, rs)) < 0)
+      return ret;
 
   c->cfa = cfa;
   /* DWARF spec says undefined return address location means end of stack. */
